@@ -78,3 +78,109 @@ drive.mount('/content/drive')
 with open('/content/drive/My Drive/Colab Notebooks/Week03/a1a.txt', 'r') as f:
     text = f.read()
 print(text)
+
+
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+
+
+
+import torch
+from torch.utils.data import Dataset
+from sklearn.datasets import load_svmlight_file
+import pandas as pd
+
+# --- CUSTOM DATASET CLASS ---
+# This class wraps data so it can be used with PyTorch's DataLoader.
+# It MUST inherit from torch.utils.data.Dataset and implement __len__ and __getitem__.
+class SimpleDataset(Dataset):
+    def __init__(self, X, y):
+        super(SimpleDataset, self).__init__()
+        # Convert the input data to a NumPy array (if it isn't already)
+        self.X = X.to_numpy()
+        self.y = y
+
+    def __getitem__(self, index):
+        # This method retrieves a single sample at the specified index.
+        # It converts the data to PyTorch tensors, which are required for training.
+        inputs = torch.tensor(self.X[index, :], dtype=torch.float32)
+        # Targets are usually Long (int64) for classification tasks.
+        targets = torch.tensor(int(self.y.iloc[index]), dtype=torch.int64)
+        return inputs, targets
+
+    def __len__(self):
+        # Returns the total number of samples in the dataset.
+        return self.X.shape[0]
+
+
+# --- HELPER FUNCTION TO LOAD LIBSVM DATA ---
+# LIBSVM is a common format for sparse datasets (like text or high-dimensional data).
+def libsvm2Dataset(filepath, expected_num_features=None):
+    """
+    Reads a LIBSVM formatted dataset and converts it to a SimpleDataset.
+
+    Args:
+        filepath (str): Path to the LIBSVM file.
+        expected_num_features (int): Optional, the expected number of features per row.
+
+    Returns:
+        dataset (SimpleDataset): The dataset created from the LIBSVM file.
+    """
+    # Step 1: Read the data using sklearn's load_svmlight_file.
+    # This returns a sparse matrix (stores only non-zero values to save memory) and a label array.
+    X_sparse, y = load_svmlight_file(filepath)
+
+    # Step 2: Convert to dense matrix (DataFrame) for easier manipulation.
+    # Sparse matrices are efficient but often need to be dense for simple PyTorch layers.
+    X = pd.DataFrame(X_sparse.toarray())
+    y = pd.Series(y)  # Convert labels to a Pandas Series
+
+    # (Optional logic commented out in original code to validate dimensions)
+    """
+    # Step 3: Check if the length of the dataset is correct
+    if len(X) != len(y):
+        raise ValueError("The number of feature rows does not match the number of labels.")
+
+    # Step 4: Check if the number of features per row matches the expected number of features
+    if expected_num_features is not None and X.shape[1] != expected_num_features:
+        raise ValueError(f"Each row should have {expected_num_features} features, but got {X.shape[1]}.")
+    """
+    # Step 5: Create and return the SimpleDataset object using the class defined above.
+    dataset = SimpleDataset(X, y)
+
+    return dataset
+
+# --- USAGE EXAMPLE ---
+# Assuming 'a1a.txt' is a LIBSVM file located in your Drive.
+# We call the helper function to load it into a PyTorch-ready dataset.
+dataset = libsvm2Dataset('/content/drive/My Drive/Colab Notebooks/Week03/a1a.txt', expected_num_features=119)
+
+# --- VERIFICATION ---
+# Check dataset length
+print(f"Dataset length: {len(dataset)}")
+
+# Access a single data point to verify shape and type
+inputs, label = dataset[0]
+print("Features: ", inputs.shape)
+print("Label of index 0: ", label)
+print(inputs, label)
+
+# --- GOOGLE DRIVE SETUP ---
+# Standard code to mount Google Drive so you can access your files.
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Optional: Read the raw text file just to see what LIBSVM format looks like.
+# Usually: <label> <index1>:<value1> <index2>:<value2> ...
+with open('/content/drive/My Drive/Colab Notebooks/Week03/a1a.txt', 'r') as f:
+    text = f.read()
+print(text)

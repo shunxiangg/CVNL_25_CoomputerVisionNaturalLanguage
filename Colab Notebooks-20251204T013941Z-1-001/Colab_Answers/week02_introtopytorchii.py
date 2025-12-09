@@ -154,3 +154,226 @@ print("Length: ", len(dataset))
 example, label = dataset[0]
 print("Features: ", example.shape)
 print("Label of index 0: ", label)
+
+
+
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+
+
+
+import torch
+import timeit
+
+# --- 1. GPU ACCELERATION DEMO ---
+# Create a large random matrix (2^11 x 2^11 = 2048 x 2048) on the CPU.
+x = torch.rand(2**11, 2**11)
+
+# Measure how long it takes to perform matrix multiplication (x @ x) on the CPU.
+# 'number=100' runs the operation 100 times for a more accurate average.
+time_cpu = timeit.timeit("x@x", globals=globals(), number=100)
+print(f"CPU Time: {time_cpu}")
+
+# Check if a GPU is available.
+print("Is CUDA available? :", torch.cuda.is_available())
+device = torch.device("cuda")
+
+# Move the tensor 'x' to the GPU.
+# This transfer itself takes time, but subsequent operations are fast.
+x = x.to(device)
+
+# Measure the time for matrix multiplication on the GPU.
+# Note: For accurate benchmarking, synchronization is often needed, but this gives a general idea.
+time_gpu = timeit.timeit("x@x", globals=globals(), number=100)
+print(f"GPU Time: {time_gpu}")
+
+# --- 2. DEVICE COMPATIBILITY ---
+# Create two tensors directly on the GPU.
+x = torch.rand(128, 128).to(device)
+y = torch.rand(128, 128).to(device)
+
+# Perform element-wise multiplication.
+# This works because both tensors are on the same device (GPU).
+result = y * x 
+
+# Demonstration of error:
+# If you try to operate on tensors on different devices (one CPU, one GPU),
+# PyTorch will throw a RuntimeError.
+# x = torch.rand(128, 128).to(device)
+# y = torch.rand(128, 128).to(device)
+# y*x
+
+# --- 3. MOVING DATA BACK TO CPU ---
+# We cannot convert a GPU tensor directly to NumPy.
+# We must first move it to CPU memory using .cpu().
+# x.numpy() # This would raise an error
+x_np = x.cpu().numpy()
+
+# --- 4. RECURSIVE DATA MOVER UTILITY ---
+# A helper function to move complex data structures (lists, dicts, tuples) to a device.
+def moveTo(obj, device):
+  '''
+  obj: the python object to move to a device, or to move its contents to a device
+  device: the compute device to move objects to
+  '''
+  if isinstance(obj, list):
+    return [moveTo(x, device) for x in obj]
+  elif isinstance(obj, tuple):
+    return tuple(moveTo(list(obj), device))
+  elif isinstance(obj, set):
+    return set(moveTo(list(obj), device))
+  elif isinstance(obj, dict):
+    to_ret = dict()
+    for key, value in obj.items():
+      to_ret[moveTo(key, device)] = moveTo(value, device)
+    return to_ret
+  elif hasattr(obj, "to"):
+    return obj.to(device)
+  else:
+    return obj
+
+some_tensors = [torch.tensor(1), torch.tensor(2)]
+print(some_tensors)
+# Moves the list of tensors to the GPU
+print(moveTo(some_tensors, device))
+
+# --- 5. DRIVE MOUNTING (Colab Specific) ---
+from google.colab import drive
+drive.mount('/content/drive')
+
+# --- 6. AUTOMATIC DIFFERENTIATION (AUTOGRAD) ---
+import numpy as np
+import seaborn as sns
+
+# Define a simple function: f(x) = (x-2)^2
+def f(x):
+  return torch.pow((x-2.0), 2)
+
+# Generate x values for plotting
+x_axis_vals = np.linspace(-7,9,100)
+# Calculate y values using the function
+y_axis_vals = f(torch.tensor(x_axis_vals)).numpy()
+# Plot the function
+sns.lineplot(x=x_axis_vals, y=y_axis_vals, label='$f(x)=(x-2)^2$')
+
+# Define the derivative manually: f'(x) = 2(x-2) = 2x - 4
+def fP(x): 
+  return 2*x-4
+y_axis_vals_p = fP(torch.tensor(x_axis_vals)).numpy()
+
+# Plot the function and its derivative (gradient)
+# Draws a black line at 0 so we can easily tell if something is positive or negative
+sns.lineplot(x=x_axis_vals, y=[0.0]*len(x_axis_vals), label="0", \
+             color='black')
+sns.lineplot(x=x_axis_vals, y=y_axis_vals, \
+             label='Function to Minimize $f(x) = (x-2)^2$')
+sns.lineplot(x=x_axis_vals, y=y_axis_vals_p, \
+             label="Gradient of the function $f'(x)=2 x - 4$")
+
+# --- 7. CALCULATING GRADIENTS WITH PYTORCH ---
+import torch
+# Create a tensor with `requires_grad=True`.
+# This tells PyTorch to track operations on this tensor to compute gradients later.
+x = torch.tensor([-3.5], requires_grad=True)
+print(x.grad) # None (Gradients haven't been computed yet)
+
+# Forward pass: Compute the function value
+value = f(x)
+print(value)
+
+# Backward pass: Compute gradients (d(value)/dx)
+value.backward()
+print(x.grad) # Should print the gradient value at x=-3.5
+
+# --- 8. MANUAL GRADIENT DESCENT ---
+x = torch.tensor([-3.5], requires_grad=True)
+x_cur = x.clone() # Current guess
+x_prev = x_cur*100 # Previous guess (initialized far away)
+
+# Threshold for stopping (convergence)
+epsilon = 1e-5
+eta = 0.1 # Learning rate
+
+# Loop until the change in x is very small
+while torch.linalg.norm(x_cur-x_prev) > epsilon:
+  x_prev = x_cur.clone() # Update previous guess
+  
+  # Forward pass
+  value = f(x) 
+  
+  # Backward pass
+  value.backward()
+  
+  # Update rule: x = x - learning_rate * gradient
+  # We use .data to update the value without tracking this operation in the computation graph
+  x.data -= eta * x.grad
+  
+  # Zero out gradients for the next iteration (PyTorch accumulates gradients by default)
+  x.grad.zero_() 
+
+  x_cur = x.data 
+
+print(f"Converged to minimum at x = {x_cur}")
+
+# --- 9. PYTORCH OPTIMIZER (SGD) ---
+# Create a Parameter. This is a wrapper around a tensor that is automatically added 
+# to the list of model parameters when assigned to a Module.
+x_param = torch.nn.Parameter(torch.tensor([-3.5]), requires_grad=True)
+
+# Use Stochastic Gradient Descent (SGD) optimizer.
+# It handles the update step (x = x - lr * grad) automatically.
+optimizer = torch.optim.SGD([x_param], lr=eta)
+
+for epoch in range(60):
+  optimizer.zero_grad() # Clear previous gradients
+  loss_incurred = f(x_param) # Forward pass (compute loss)
+  loss_incurred.backward() # Backward pass (compute gradients)
+  optimizer.step() # Update parameters based on gradients
+
+print(f"Optimizer converged to x = {x_param.data}")
+
+# --- 10. LOADING DATASETS ---
+from torch.utils.data import Dataset
+from sklearn.datasets import fetch_openml
+
+# Loads MNIST data (handwritten digits)
+# https://www.openml.org/d/554
+X, y = fetch_openml('mnist_784', version=1, return_X_y=True)
+
+print(X.shape) # (70000, 784) -> 70k images, 28x28 flattened pixels
+
+# Define a custom Dataset class
+class SimpleDataset(Dataset):
+
+  def __init__(self, X, y):
+    super(SimpleDataset, self).__init__()
+    # Convert X and y to numpy arrays for efficient indexing
+    self.X = X.to_numpy()
+    self.y = y.to_numpy()
+
+  def __getitem__(self, index):
+    # Returns a tuple of (features, label) for a specific index.
+    # Converts data to PyTorch tensors with appropriate types.
+    inputs = torch.tensor(self.X[index,:], dtype=torch.float32)
+    targets = torch.tensor(int(self.y[index]), dtype=torch.int64)
+    return inputs, targets
+
+  def __len__(self):
+    # Returns total number of samples
+    return self.X.shape[0]
+
+dataset = SimpleDataset(X, y)
+
+print("Length: ", len(dataset))
+example, label = dataset[0]
+print("Features: ", example.shape)
+print("Label of index 0: ", label)

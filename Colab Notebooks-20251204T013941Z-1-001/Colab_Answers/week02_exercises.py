@@ -193,3 +193,261 @@ for epoch in range(60):
   optimizer.step() #x.data -= eta * x.grad
 
 print(param.data)
+
+
+
+
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+#=========================================================
+
+
+
+import torch
+
+# --- CREATING A 3D TENSOR ---
+# This manually defines a 3D tensor of shape (4, 2, 3).
+# Structure: 4 'blocks', each block has 2 rows, each row has 3 columns.
+torch_tensor3d = torch.Tensor([
+    [
+        [ 1, 2, 3],
+        [ 4, 5, 6],
+    ],
+    [
+        [ 7, 8, 9],
+        [10, 11, 12],
+    ],
+    [
+        [13, 14, 15],
+        [16, 17, 18],
+    ],
+    [
+        [19, 20, 21],
+        [22, 23, 24],
+    ]
+])
+
+# --- SOLUTION 1: MANUAL NESTED LOOPS ---
+total = 0
+count = 0
+
+# Loop through the first dimension (size 4)
+for i in range(torch_tensor3d.size(0)):
+    # Loop through the second dimension (size 2)
+    for j in range(torch_tensor3d.size(1)):
+        # Loop through the third dimension (size 3)
+        for k in range(torch_tensor3d.size(2)):
+            # Access the individual scalar value at index [i][j][k]
+            # .item() converts a 0-d tensor to a standard Python number
+            total += torch_tensor3d[i][j][k].item()
+            count += 1
+
+# Compute average
+average = total / count
+
+print(f"Average value in torch_tensor3d is: {average}")
+
+# --- SOLUTION 2: CLEANER LOOPING ---
+# Alternative answer using shape unpacking
+total = 0
+
+# Unpack dimensions into variables x, y, z
+x, y, z = torch_tensor3d.shape
+
+# Iterate through dimensions
+for i in range(x):
+    for j in range(y):
+        for k in range(z):
+            # PyTorch tensors support += with other tensors automatically
+            total += torch_tensor3d[i][j][k]
+
+# Calculate total number of elements (x*y*z) and divide
+average = total / (x*y*z)
+
+print(f"Average value in torch_tensor3d is: {average}")
+
+"""Q2. For every power of 2 (i.e., 2 to power of i or 2i ) up to 2 to power of 11, create a random matrix X ∈ R2i;2i (i.e., X.shape should give (2i, 2**i)). Time how long it takes to compute XX (i.e., X @ X) on a CPU and on a GPU, and plot the speedup. For what matrix sizes is the CPU faster than the GPU?"""
+
+import torch
+import time
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Check if GPU is available and set device
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
+    print("Warning: CUDA not found, GPU tests will run on CPU")
+
+cpu_times = []
+gpu_times = []
+matrix_sizes = []
+max_power = 11
+
+# Loop from 2^1 to 2^11
+for i in range(1, max_power + 1):
+  size = 2**i # Calculate matrix dimension (e.g., 2, 4, 8... 2048)
+  matrix_sizes.append(size)
+
+  # Create a random matrix of size (size, size) on the CPU
+  X = torch.randn(size, size)
+
+  # --- CPU BENCHMARK ---
+  start_cpu = time.time()
+  X_cpu = X @ X  # Matrix multiplication (@ operator) on CPU
+  cpu_times.append(time.time() - start_cpu) # Record duration
+
+  # --- GPU BENCHMARK ---
+  # Move the tensor to the GPU (this transfer time is often the bottleneck for small matrices)
+  X_gpu = X.to(device) 
+  
+  # Synchronize before starting timer (essential for accurate GPU timing)
+  if torch.cuda.is_available(): torch.cuda.synchronize()
+  
+  start_gpu = time.time()
+  X_gpu_result = X_gpu @ X_gpu  # Matrix multiplication on GPU
+  
+  # Synchronize after operation to ensure it's actually finished
+  if torch.cuda.is_available(): torch.cuda.synchronize()
+  
+  gpu_times.append(time.time() - start_gpu) # Record duration
+
+ # Calculate speedup: Ratio of CPU time to GPU time.
+ # > 1 means GPU is faster. < 1 means CPU is faster.
+speedup = [cpu / gpu for cpu, gpu in zip(cpu_times, gpu_times)]
+
+# --- PLOTTING ---
+plt.figure(figsize=(12, 6))
+
+# Plot 1: Absolute Times (CPU vs GPU)
+plt.subplot(1, 2, 1) # 1 row, 2 cols, 1st plot
+plt.plot(matrix_sizes, cpu_times, label="CPU Time", marker="o")
+plt.plot(matrix_sizes, gpu_times, label="GPU Time", marker="o")
+plt.xscale("log") # Log scale helps visualize exponential growth (2^i)
+plt.yscale("log")
+plt.xlabel("Matrix Size (2^i)")
+plt.ylabel("Time (s)")
+plt.title("CPU vs GPU Time for Matrix Multiplication")
+plt.legend()
+
+# Plot 2: Speedup Factor
+plt.subplot(1, 2, 2) # 1 row, 2 cols, 2nd plot
+plt.plot(matrix_sizes, speedup, label="Speedup (CPU/GPU)", marker="o", color="purple")
+plt.xscale("log")
+plt.xlabel("Matrix Size (2^i)")
+plt.ylabel("Speedup")
+plt.title("Speedup of GPU over CPU")
+# Draw a horizontal line at 1.0 (where CPU = GPU)
+plt.axhline(y=1, color="red", linestyle="--", label="CPU=GPU")
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# --- TEXT REPORT ---
+# Identify the crossover point
+for i, size in enumerate(matrix_sizes):
+    if cpu_times[i] < gpu_times[i]:
+        print(f"CPU is faster than GPU for matrix size: {size}x{size}")
+    else:
+        print(f"GPU is faster than CPU for matrix size: {size}x{size}")
+
+"""Observations:
+
+Small matrix sizes: CPU is often faster due to the overhead of transferring data to/from the GPU (PCIe bus latency) and launching the GPU kernel.
+
+Large matrix sizes: GPU becomes significantly faster because its massive parallelism (thousands of cores) outweighs the setup overhead.
+
+Q3.
+We used PyTorch to find the numeric solution to f(x) = (x - 2)2. Write code that finds the solution to f(x) = sin(x - 2) · (x + 2)2 +√(| cos(x)|). What answer do you get?
+"""
+
+import torch
+
+# Define the complex function f(x) using PyTorch math operations
+# torch.abs computes absolute value
+# torch.sqrt computes square root
+def f(x):
+    return torch.sin(x - 2) * (x + 2)**2 + torch.sqrt(torch.abs(torch.cos(x)))
+
+# Initialize 'x' as a tensor with a value of -3.5.
+# requires_grad=True tells PyTorch to track operations on this tensor for automatic differentiation.
+x = torch.tensor([-3.5], requires_grad=True)
+
+# Create clones to track convergence. 
+# We need separate tensors so they don't share memory/gradients.
+x_cur = x.clone()
+x_prev = x_cur*100 # Initialize prev far away to ensure loop starts
+
+# Convergence settings
+epsilon = 1e-5 # Stop if change is smaller than this
+eta = 0.1 # Learning rate (step size)
+
+# --- OPTIMIZATION LOOP ---
+# Check if the difference between current and previous x is significant
+while torch.linalg.norm(x_cur-x_prev) > epsilon:
+  x_prev = x_cur.clone() # Update previous value
+  
+  value = f(x) # 1. Forward Pass: Compute function value
+  value.backward() # 2. Backward Pass: Compute gradient (df/dx) automatically
+  
+  # 3. Update Step (Gradient Descent)
+  # We use .data to update the value without PyTorch tracking this operation in the gradient graph
+  # x_new = x_old - learning_rate * gradient
+  x.data -= eta * x.grad
+  
+  # 4. Zero Gradients
+  # Gradients accumulate in PyTorch by default, so we must clear them after every step
+  x.grad.zero_() 
+
+  x_cur = x.data # Update current tracker
+
+print(f"Found solution x = {x_cur}")
+
+"""Q4.
+Write a new function that takes two inputs, x and y, where
+f(x; y) = exp(sin(x)2) /(x - y)2 + (x - y)2
+
+Use an Optimizer with initial parameter values of x = 0.2 and y = 10. What do
+they converge to?
+
+"""
+
+import torch
+
+# Define the function f(x, y). 
+# It takes a single list/tensor 'args' containing [x, y]
+def f(args):
+    x, y = args
+    return torch.exp(torch.sin(x)**2) / (x - y)**2 + (x - y)**2
+
+# Initialize parameters as a single tensor with 2 values [0.2, 10]
+# Use torch.nn.Parameter to explicitly tell PyTorch these are trainable weights
+param = torch.nn.Parameter(torch.tensor([0.2, 10]), requires_grad=True)
+
+eta = 0.1 # learning rate
+
+# Use the SGD (Stochastic Gradient Descent) optimizer built into PyTorch
+# This handles the update step (x.data -= ...) automatically
+optimizer = torch.optim.SGD([param], lr=eta)
+
+# --- TRAINING LOOP ---
+for epoch in range(60):
+  optimizer.zero_grad() # 1. Clear old gradients
+  
+  loss = f(param) # 2. Forward pass: Calculate function output (loss)
+  
+  loss.backward() # 3. Backward pass: Calculate gradients for x and y
+  
+  optimizer.step() # 4. Update step: Adjust x and y based on gradients
+
+print(f"Converged values: {param.data}")
